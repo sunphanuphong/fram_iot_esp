@@ -87,33 +87,43 @@ void setup() {
 }
 
 void loop() {
-  // --- ส่วนที่ 1: รับการแจ้งเตือนจากแอปเมื่อมีการเปลี่ยนการตั้งค่า ---
-  if (Firebase.readStream(firebaseData)) {
-    if (firebaseData.streamAvailable()) {
-      // ดึงเฉพาะค่าที่มีการอัปเดต
-      if (Firebase.getString(fbUpdate, "/farm/relay1/mode")) currentMode = fbUpdate.stringData();
-      if (Firebase.getInt(fbUpdate, "/farm/relay1/status")) currentStatus = fbUpdate.intData();
-      if (Firebase.getString(fbUpdate, "/farm/relay1/on_time")) onTime = fbUpdate.stringData();
-      if (Firebase.getString(fbUpdate, "/farm/relay1/off_time")) offTime = fbUpdate.stringData();
-      
-      Serial.println(">> อัปเดตการตั้งค่าใหม่: โหมด " + currentMode + " | เปิด: " + onTime + " | ปิด: " + offTime);
-      
-      // --- โค้ดสำหรับดึงเวลาปัจจุบัน (HH:MM) ---
-      String currentTime = "";
-      struct tm timeinfo;
-      if (getLocalTime(&timeinfo)) {
-       char timeStringBuff[6];
-       strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M", &timeinfo);
-       currentTime = String(timeStringBuff);
+  // 1. เช็ค Wi-Fi หลุด
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi หลุด... กำลังเชื่อมต่อใหม่");
+    WiFi.reconnect();
+  }
+  
+  Serial.println("Free RAM: " + String(ESP.getFreeHeap()));
+  
+  // --- ส่วนที่ 1: รับการแจ้งเตือนจากแอป (ครอบ Firebase.ready ไว้ตรงนี้) ---
+  if (Firebase.ready()) {
+    if (Firebase.readStream(firebaseData)) {
+      if (firebaseData.streamAvailable()) {
+        // ดึงเฉพาะค่าที่มีการอัปเดต
+        if (Firebase.getString(fbUpdate, "/farm/relay1/mode")) currentMode = fbUpdate.stringData();
+        if (Firebase.getInt(fbUpdate, "/farm/relay1/status")) currentStatus = fbUpdate.intData();
+        if (Firebase.getString(fbUpdate, "/farm/relay1/on_time")) onTime = fbUpdate.stringData();
+        if (Firebase.getString(fbUpdate, "/farm/relay1/off_time")) offTime = fbUpdate.stringData();
+        
+        Serial.println(">> อัปเดตการตั้งค่าใหม่: โหมด " + currentMode + " | เปิด: " + onTime + " | ปิด: " + offTime);
+        
+        // --- โค้ดสำหรับดึงเวลาปัจจุบัน (HH:MM) ---
+        String currentTime = "";
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo)) {
+          char timeStringBuff[6];
+          strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M", &timeinfo);
+          currentTime = String(timeStringBuff);
         }
 
-      Serial.println("เวลาบอร์ด: [" + currentTime + "] ");
-      
-      // ถ้าเป็นโหมด manual ให้เปิด-ปิดตามปุ่มทันที
-      if (currentMode == "manual") {
-        digitalWrite(RELAY_PIN, currentStatus == 1 ? HIGH : LOW);
-        String replyMsg = currentStatus == 1 ? "บอร์ดได้รับคำสั่ง: เปิดไฟเรียบร้อย" : "บอร์ดได้รับคำสั่ง: ปิดไฟเรียบร้อย";
-        Firebase.setString(fbUpdate, "/farm/relay1/feedback", replyMsg);
+        Serial.println("เวลาบอร์ด: [" + currentTime + "] ");
+        
+        // ถ้าเป็นโหมด manual ให้เปิด-ปิดตามปุ่มทันที
+        if (currentMode == "manual") {
+          digitalWrite(RELAY_PIN, currentStatus == 1 ? HIGH : LOW);
+          String replyMsg = currentStatus == 1 ? "บอร์ดได้รับคำสั่ง: เปิดไฟเรียบร้อย" : "บอร์ดได้รับคำสั่ง: ปิดไฟเรียบร้อย";
+          Firebase.setString(fbUpdate, "/farm/relay1/feedback", replyMsg);
+        }
       }
     }
   }
@@ -146,11 +156,14 @@ void loop() {
         currentStatus = desiredStatus;
         
         digitalWrite(RELAY_PIN, currentStatus == 1 ? HIGH : LOW);
-        Firebase.setInt(fbUpdate, "/farm/relay1/status", currentStatus);
-        String replyMsg = currentStatus == 1 ? "ระบบอัตโนมัติ: เปิดไฟแล้ว" : "ระบบอัตโนมัติ: ปิดไฟแล้ว";
-        Firebase.setString(fbUpdate, "/farm/relay1/feedback", replyMsg);
-        
         Serial.println(">> [AUTO] ถึงเวลา " + currentTime + " สั่งเปลี่ยนสถานะไฟเป็น: " + String(currentStatus));
+        
+        // เช็คความพร้อมก่อนส่งอัปเดตกลับไปที่ Firebase เพื่อป้องกัน Error
+        if (Firebase.ready()) {
+          Firebase.setInt(fbUpdate, "/farm/relay1/status", currentStatus);
+          String replyMsg = currentStatus == 1 ? "ระบบอัตโนมัติ: เปิดไฟแล้ว" : "ระบบอัตโนมัติ: ปิดไฟแล้ว";
+          Firebase.setString(fbUpdate, "/farm/relay1/feedback", replyMsg);
+        }
       }
     }
   }
