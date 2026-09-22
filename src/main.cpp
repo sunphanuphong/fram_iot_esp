@@ -93,7 +93,7 @@ void loop() {
     WiFi.reconnect();
   }
   
-  Serial.println("Free RAM: " + String(ESP.getFreeHeap()));
+  //Serial.println("Free RAM: " + String(ESP.getFreeHeap()));
   
   // --- ส่วนที่ 1: รับการแจ้งเตือนจากแอป (ครอบ Firebase.ready ไว้ตรงนี้) ---
   if (Firebase.ready()) {
